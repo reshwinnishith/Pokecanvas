@@ -1,0 +1,17 @@
+# Wrangler local state, caches and account info (never commit)
+worker/.wrangler/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+node_modules/
+# OS / editor
+.DS_Store
+*.log
+# Generated exports and scratch output
+pokecanvas*.png
+*.tmp
+
+# local tooling
+.claude/

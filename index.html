@@ -1,9 +1,122 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PokéCanvas</title><style>
-*{box-sizing:border-box}body{margin:0;background:#101914;color:#edf3e9;font:16px system-ui}header,main{max-width:1100px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:clamp(32px,5vw,60px);letter-spacing:-.06em;margin:0}small,p{color:#b5c5b8}main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:24px}.panel{background:#1b2820;border:1px solid #34483a;border-radius:20px;padding:22px}label{display:block;margin:18px 0 6px;font-size:13px}input,select,textarea,button{font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid #49604e;background:#101914;color:inherit}button{background:#c8e69d;color:#172314;font-weight:700;cursor:pointer;margin-top:12px}button:disabled{opacity:.5}canvas{width:100%;height:auto;display:block;border-radius:8px;background:#101914}textarea{min-height:85px}a{color:#c8e69d}@media(max-width:720px){main{grid-template-columns:1fr}header,main{padding:16px}}@media print{body{background:white}header,.controls,.note{display:none}main{display:block;padding:0}.panel{border:0;padding:0;background:white}canvas{width:var(--print-width);height:var(--print-height);margin:auto;border-radius:0}@page{size:A4 portrait;margin:5mm}}</style><header><div><small>THE BINDER ART STUDIO</small><h1>PokéCanvas.</h1></div><small>V1 · Personal studio</small></header><main><section class="panel controls"><h2>Create your page</h2><label for="card">Original card photo (crop to card first)</label><input id="card" type="file" accept="image/*"><label for="layout">Binder layout</label><select id="layout"><option value="3">9 pockets · 3 × 3</option><option value="2">4 pockets · 2 × 2</option><option value="4">16 pockets · 4 × 4</option></select><label for="slot">Original card position</label><select id="slot"></select><label for="prompt">Artwork direction</label><textarea id="prompt">Extend the landscape and colors naturally beyond the card edges. No text, borders, logos or duplicate characters.</textarea><button id="copy">Copy Gemini prompt</button><p>Upload your card to Gemini with the copied prompt, then import its generated artwork below.</p><label for="art">Extended artwork</label><input id="art" type="file" accept="image/*"><label><input id="guides" type="checkbox" checked style="width:auto"> Cutting guides</label><button id="save">Export artwork PNG</button><button id="print">Print / Save PDF</button><p id="status" role="status"></p></section><section class="panel"><canvas id="preview" aria-label="Binder artwork preview"></canvas><p class="note">Standard card size: 63 × 88 mm. The original card is shown in preview only; its pocket is left blank when exporting. 16-pocket layouts print across four A4 sheets using PNG export and external tiling; direct PDF printing is disabled for this layout.</p></section></main><script>
-const $=id=>document.getElementById(id),c=$('preview'),ctx=c.getContext('2d');let card,art;const W=756,H=1056;
-function slots(){let n=+$('layout').value;$('slot').replaceChildren(...Array.from({length:n*n},(_,i)=>new Option('Pocket '+(i+1),i)));$('slot').value=Math.floor(n*n/2);draw()}
-function cover(im,x,y,w,h){let s=Math.max(w/im.width,h/im.height),a=w/s,b=h/s;ctx.drawImage(im,(im.width-a)/2,(im.height-b)/2,a,b,x,y,w,h)}
-function draw(exporting=false){let n=+$('layout').value,i=+$('slot').value;c.width=W*n;c.height=H*n;c.style.setProperty('--print-width',63*n+'mm');c.style.setProperty('--print-height',88*n+'mm');ctx.fillStyle='#e8e8e8';ctx.fillRect(0,0,c.width,c.height);if(art)cover(art,0,0,c.width,c.height);else{ctx.fillStyle='#31483c';ctx.fillRect(0,0,c.width,c.height)}let x=i%n*W,y=Math.floor(i/n)*H;ctx.fillStyle=exporting?'white':'#b9cbb8';ctx.fillRect(x,y,W,H);if(card&&!exporting)cover(card,x,y,W,H);if($('guides').checked){ctx.strokeStyle='#888';ctx.lineWidth=3;for(let j=0;j<=n;j++){ctx.beginPath();ctx.moveTo(j*W,0);ctx.lineTo(j*W,c.height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,j*H);ctx.lineTo(c.width,j*H);ctx.stroke()}}$('print').disabled=n===4}
-function load(el,set){el.onchange=()=>{let f=el.files[0];if(!f)return;let u=URL.createObjectURL(f),im=new Image;im.onload=()=>{set(im);URL.revokeObjectURL(u);draw()};im.onerror=()=>{URL.revokeObjectURL(u);$('status').textContent='Could not open this image.'};im.src=u}}
-load($('card'),v=>card=v);load($('art'),v=>art=v);$('layout').onchange=slots;$('slot').onchange=$('guides').onchange=()=>draw();$('copy').onclick=async()=>{let n=+$('layout').value,i=+$('slot').value;let p='Create one continuous portrait artwork with aspect ratio 63:88 for a '+n+' by '+n+' trading card binder. The uploaded card occupies row '+(Math.floor(i/n)+1)+', column '+(i%n+1)+'. Extend its background seamlessly across the entire canvas. Keep the original composition aligned to that pocket. '+$('prompt').value;try{await navigator.clipboard.writeText(p);$('status').textContent='Prompt copied.'}catch{$('status').textContent=p}};$('save').onclick=()=>{if(!art){$('status').textContent='Import artwork first.';return}draw(true);let a=document.createElement('a');a.download='pokecanvas.png';a.href=c.toDataURL('image/png');a.click();draw()};$('print').onclick=()=>{if(!art){$('status').textContent='Import artwork first.';return}draw(true);window.print();draw()};slots();
-</script></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PokéCanvas</title>
+<meta name="description" content="Photograph a Pokémon card, identify it, fetch its clean artwork and extend it into a printable binder page.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<noscript>PokéCanvas needs JavaScript to identify cards and build binder pages. Please enable it to continue.</noscript>
+
+<header>
+  <div class="brand">
+    <span class="pokeball" aria-hidden="true"></span>
+    <div>
+      <h1>PokéCanvas<span class="dot">.</span></h1>
+      <p class="tagline">Photo in, identified card out, binder-ready artwork exported.</p>
+    </div>
+  </div>
+  <span class="badge beta">v2 · identification + outpaint beta</span>
+</header>
+
+<main>
+  <section class="controls">
+
+    <section class="panel">
+      <h2>1 · Photograph your card</h2>
+      <p>Crop to just the card if you can -- it helps both the reader and the artwork extension.</p>
+      <label for="photo">Card photo</label>
+      <input id="photo" type="file" accept="image/*" capture="environment">
+      <div class="thumb-row">
+        <img id="photoThumb" class="thumb" alt="Uploaded card photo" hidden>
+        <div style="flex:1; min-width:0;">
+          <div id="ocrProgressWrap" class="progress" hidden><span id="ocrProgressBar"></span></div>
+          <p id="ocrStatus" class="status" role="status"></p>
+        </div>
+      </div>
+
+      <div id="candidatePanel" hidden>
+        <h3>Is this your card?</h3>
+        <ul id="candidateList" class="candidate-list"></ul>
+      </div>
+      <p id="noMatch" class="status" hidden>Type the card's name and number yourself:</p>
+
+      <h3>Manual search / correction</h3>
+      <div class="row">
+        <div style="flex:2 1 160px;">
+          <label for="manualName">Card name</label>
+          <input id="manualName" type="text" placeholder="e.g. Charizard">
+        </div>
+        <div style="flex:1 1 90px;">
+          <label for="manualNumber">No.</label>
+          <input id="manualNumber" type="text" placeholder="4/102">
+        </div>
+      </div>
+      <label for="manualLang">Language</label>
+      <select id="manualLang">
+        <option value="en">English</option>
+        <option value="ja">Japanese</option>
+      </select>
+      <button id="manualSearch" type="button" class="secondary">Search card database</button>
+    </section>
+
+    <section class="panel">
+      <h2>2 · Clean artwork</h2>
+      <div class="thumb-row">
+        <img id="cleanThumb" class="thumb" alt="Clean card artwork" hidden>
+        <p id="cleanStatus" class="status" role="status" style="flex:1;"></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3 · Extend the artwork</h2>
+
+      <button id="aiExtend" type="button">AI outpaint <span class="badge beta">beta</span></button>
+      <div id="aiProgressWrap" class="progress" hidden><span id="aiProgressBar"></span></div>
+      <p id="aiStatus" class="status" role="status"></p>
+      <div id="aiResultRow" class="row" hidden>
+        <button id="regenerate" type="button" class="secondary">Regenerate</button>
+      </div>
+
+      <h3>Manual (Gemini) <span class="badge manual">always available</span></h3>
+      <label for="prompt">Artwork direction</label>
+      <textarea id="prompt">Extend the landscape and colors naturally beyond the card edges. No text, borders, logos or duplicate characters.</textarea>
+      <button id="copy" type="button" class="secondary">Copy Gemini prompt</button>
+      <p>Paste the card photo and this prompt into Gemini, then import its result below.</p>
+      <label for="art">Extended artwork (manual import)</label>
+      <input id="art" type="file" accept="image/*">
+    </section>
+
+    <section class="panel">
+      <h2>4 · Binder layout</h2>
+      <label for="layout">Binder layout</label>
+      <select id="layout">
+        <option value="3" selected>9 pockets · 3 × 3</option>
+        <option value="2">4 pockets · 2 × 2</option>
+        <option value="4">16 pockets · 4 × 4</option>
+      </select>
+      <label for="slot">Original card position</label>
+      <select id="slot"></select>
+      <label><input id="guides" type="checkbox" checked> Cutting guides</label>
+      <button id="save" type="button">Export artwork PNG</button>
+      <button id="print" type="button" class="secondary">Print / Save PDF</button>
+      <p id="status" class="status" role="status"></p>
+    </section>
+
+  </section>
+
+  <section class="stage">
+    <canvas id="preview" aria-label="Binder artwork preview"></canvas>
+    <p class="note">Standard card size: 63 × 88 mm. The original card is shown in preview only; its pocket is left blank when exporting so your real card can sit in it. 16-pocket layouts export as PNG tiles for external printing; direct PDF printing is disabled for that layout.</p>
+    <p class="credit">Card identification &amp; artwork via <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>. OCR runs locally in your browser via Tesseract.js. AI outpaint runs on Cloudflare Workers AI (Stable Diffusion 1.5 inpainting) inside this studio's free daily allocation.</p>
+  </section>
+</main>
+
+<footer>PokéCanvas · personal studio · card art &amp; names are property of their respective owners.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
