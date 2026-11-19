@@ -5,7 +5,12 @@ compatibility_date = "2026-11-01"
 [ai]
 binding = "AI"
 
-# API_KEY is already set remotely via `wrangler secret put API_KEY`.
-# It is not declared here because secrets are never stored in wrangler.toml.
-# Reserved for an optional server-side-only privileged/debug use; the public
-# card-extension endpoint does not require it and it is never sent to the browser.
+# Comma-separated list of exact browser origins allowed to call the API.
+[vars]
+ALLOWED_ORIGINS = "https://pokecanvas-ashy.vercel.app"
+
+# API_KEY (the private studio passphrase) is a Worker secret, set with
+# `wrangler secret put API_KEY`. It is never stored in this file or in Git.
+# For local development put a TEST value in worker/.dev.vars (git-ignored):
+#   API_KEY=some-local-test-value
+#   ALLOW_LOCAL_DEV=true

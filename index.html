@@ -73,6 +73,16 @@
     <section class="panel">
       <h2>3 · Extend the artwork</h2>
 
+      <form id="unlockForm" class="unlock" autocomplete="off">
+        <label for="passphrase">Studio passphrase (for AI outpaint)</label>
+        <div class="unlock-row">
+          <input id="passphrase" type="password" autocomplete="off" aria-describedby="unlockHelp unlockStatus">
+          <button id="unlockBtn" type="submit" class="secondary">Unlock</button>
+          <button id="lockBtn" type="button" class="secondary" hidden>Lock</button>
+        </div>
+        <p id="unlockHelp" class="hint">This passphrase only protects AI generation. The rest of the site is public. It is kept for this browser tab only, and Lock clears it.</p>
+        <p id="unlockStatus" class="status" role="status"></p>
+      </form>
       <button id="aiExtend" type="button">AI outpaint <span class="badge beta">beta</span></button>
       <div id="aiProgressWrap" class="progress" hidden><span id="aiProgressBar"></span></div>
       <p id="aiStatus" class="status" role="status"></p>
@@ -110,7 +120,7 @@
   <section class="stage">
     <canvas id="preview" aria-label="Binder artwork preview"></canvas>
     <p class="note">Standard card size: 63 × 88 mm. The original card is shown in preview only; its pocket is left blank when exporting so your real card can sit in it. 16-pocket layouts export as PNG tiles for external printing; direct PDF printing is disabled for that layout.</p>
-    <p class="credit">Card identification &amp; artwork via <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>. OCR runs locally in your browser via Tesseract.js. AI outpaint runs on Cloudflare Workers AI (Stable Diffusion 1.5 inpainting) inside this studio's free daily allocation.</p>
+    <p class="credit">Card identification &amp; artwork via <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>. OCR runs locally in your browser via Tesseract.js. AI outpaint runs on Cloudflare Workers AI (Stable Diffusion 1.5 inpainting) inside this studio's free daily allocation, behind a private passphrase.</p>
   </section>
 </main>
 

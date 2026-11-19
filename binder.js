@@ -45,7 +45,7 @@ export function createBinder(canvas) {
     // is left blank; the preview-only fill lets you check alignment on screen.
     ctx.fillStyle = exporting ? "#ffffff" : "#d8cdae";
     ctx.fillRect(x, y, CARD_W, CARD_H);
-    if (state.preview && !exporting) coverDraw(ctx, state.preview, x, y, CARD_W, CARD_H);
+    if (state.preview && !exporting) containDraw(ctx, state.preview, x, y, CARD_W, CARD_H);
 
     if (state.guides) drawGuides(ctx, n, canvas.width, canvas.height);
 
@@ -75,6 +75,14 @@ function coverDraw(ctx, im, x, y, w, h) {
   const a = w / s;
   const b = h / s;
   ctx.drawImage(im, (im.width - a) / 2, (im.height - b) / 2, a, b, x, y, w, h);
+}
+
+// Draws the image with its own aspect ratio, centred in the box (no crop, no stretch).
+function containDraw(ctx, im, x, y, w, h) {
+  const s = Math.min(w / im.width, h / im.height);
+  const dw = im.width * s;
+  const dh = im.height * s;
+  ctx.drawImage(im, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
 function drawGuides(ctx, n, w, h) {

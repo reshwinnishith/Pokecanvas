@@ -1,7 +1,7 @@
 import { recognizeCard } from "./ocr.js";
 import { searchCandidates, fetchCardDetail, cardImageUrl } from "./identify.js";
 import { createBinder, loadImageFromFile, loadImageFromUrl } from "./binder.js";
-import { buildOutpaintAssets, requestOutpaint, restoreOriginalCard, buildGeminiPrompt } from "./extend.js";
+import { buildOutpaintAssets, requestOutpaint, restoreOriginalCard, buildGeminiPrompt, getPassphrase, clearPassphrase, unlockStudio } from "./extend.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -28,6 +28,12 @@ const aiStatus = $("aiStatus");
 const aiResultRow = $("aiResultRow");
 const regenerateBtn = $("regenerate");
 
+const unlockForm = $("unlockForm");
+const passphraseInput = $("passphrase");
+const unlockBtn = $("unlockBtn");
+const lockBtn = $("lockBtn");
+const unlockStatus = $("unlockStatus");
+
 const promptInput = $("prompt");
 const copyBtn = $("copy");
 const artInput = $("art");
@@ -45,7 +51,44 @@ const binder = createBinder(canvas);
 const studio = {
   cleanImage: null, // clean, identified card artwork (Image element)
   lastSeed: null,
+  aiLayout: null, // { n, slot } the current AI artwork was generated for
 };
+
+// ---- Studio passphrase (protects AI generation only) -------------------
+
+function updateAiControls() {
+  const unlocked = !!getPassphrase();
+  unlockBtn.hidden = unlocked;
+  lockBtn.hidden = !unlocked;
+  passphraseInput.disabled = unlocked;
+  if (unlocked) passphraseInput.value = "";
+  aiExtendBtn.disabled = !(unlocked && studio.cleanImage);
+}
+
+unlockForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const value = passphraseInput.value;
+  if (!value) { setStatus(unlockStatus, "Enter the studio passphrase.", "error"); return; }
+  unlockBtn.disabled = true;
+  setStatus(unlockStatus, "Checking...", "busy");
+  try {
+    await unlockStudio(value);
+    setStatus(unlockStatus, "Unlocked for this tab.", "ok");
+  } catch (err) {
+    setStatus(unlockStatus, err.code === "unauthorized" ? "Incorrect passphrase." : err.message, "error");
+  } finally {
+    unlockBtn.disabled = false;
+    passphraseInput.value = "";
+    updateAiControls();
+  }
+});
+
+lockBtn.addEventListener("click", () => {
+  clearPassphrase();
+  setStatus(unlockStatus, "Locked. The passphrase was cleared from this tab.", "ok");
+  updateAiControls();
+  passphraseInput.focus();
+});
 
 function setStatus(el, message, tone) {
   el.textContent = message || "";
@@ -71,8 +114,19 @@ function redraw() {
   printBtn.disabled = printDisabled;
 }
 
-layoutSelect.addEventListener("change", refreshSlots);
-slotSelect.addEventListener("change", () => { binder.setSlot(Number(slotSelect.value)); redraw(); });
+function noteStaleArtwork() {
+  if (!studio.aiLayout) return;
+  const n = binder.getLayout();
+  const slot = binder.getSlot();
+  if (studio.aiLayout.n !== n || studio.aiLayout.slot !== slot) {
+    setStatus(aiStatus, "The layout or card position changed since this AI artwork was made, so it no longer lines up. Run AI outpaint again.", "error");
+  } else {
+    setStatus(aiStatus, "", null);
+  }
+}
+
+layoutSelect.addEventListener("change", () => { refreshSlots(); noteStaleArtwork(); });
+slotSelect.addEventListener("change", () => { binder.setSlot(Number(slotSelect.value)); redraw(); noteStaleArtwork(); });
 guidesCheck.addEventListener("change", () => { binder.setGuides(guidesCheck.checked); redraw(); });
 
 saveBtn.addEventListener("click", () => {
@@ -99,6 +153,8 @@ artInput.addEventListener("change", async () => {
   try {
     const img = await loadImageFromFile(file);
     binder.setArt(img);
+    studio.aiLayout = null;
+    setStatus(aiStatus, "", null);
     aiResultRow.hidden = true;
     redraw();
     setStatus(statusEl, "Manual artwork imported.", "ok");
@@ -220,7 +276,7 @@ async function selectCard(lang, card, btnEl) {
   cleanThumb.hidden = true;
   try {
     const detail = await fetchCardDetail(lang, card.id).catch(() => card);
-    const url = cardImageUrl(detail.image ? detail : card, "high", "png");
+    const url = cardImageUrl(detail.image ? detail : card, "high", "webp") /* high.png sends a duplicated CORS header that browsers reject; webp works */;
     const img = await loadImageFromUrl(url);
     studio.cleanImage = img;
     cleanThumb.src = url;
@@ -228,16 +284,17 @@ async function selectCard(lang, card, btnEl) {
     binder.setPreview(img);
     redraw();
     setStatus(cleanStatus, `Using ${detail.name || card.name} (${detail._setName || card._setName || card.id}). Never substituted -- this is the exact card matched above.`, "ok");
-    aiExtendBtn.disabled = false;
+    updateAiControls();
   } catch (err) {
     setStatus(cleanStatus, `Could not load the card image: ${err.message}`, "error");
-    aiExtendBtn.disabled = true;
+    studio.cleanImage = null;
+    updateAiControls();
   }
 }
 
 // ---- Step 3: AI outpaint (beta) ---------------------------------------
 
-aiExtendBtn.disabled = true;
+updateAiControls();
 
 async function runOutpaint(seed) {
   if (!studio.cleanImage) {
@@ -253,7 +310,7 @@ async function runOutpaint(seed) {
 
   let ticker;
   try {
-    const assets = await buildOutpaintAssets(studio.cleanImage, { outW: 768, outH: 1056 });
+    const assets = await buildOutpaintAssets(studio.cleanImage, { n: binder.getLayout(), slot: binder.getSlot() });
     setStatus(aiStatus, "Generating with Workers AI (Stable Diffusion inpainting)... this can take up to a minute.", "busy");
 
     let pct = 15;
@@ -275,21 +332,25 @@ async function runOutpaint(seed) {
 
     const img = await loadImageFromUrl(url);
     binder.setArt(restoreOriginalCard(img, studio.cleanImage, assets));
+    studio.aiLayout = { n: assets.n, slot: assets.slot };
     redraw();
     aiResultRow.hidden = false;
-    setStatus(aiStatus, "AI outpaint applied. The card's own artwork is preserved exactly; only the border was generated. Regenerate for a different border, or use the manual Gemini workflow below for a second opinion.", "ok");
+    setStatus(aiStatus, "AI outpaint applied. The original card was placed back unchanged in its pocket and the other pockets were generated around it. Regenerate for a different result, or use the manual Gemini workflow below.", "ok");
   } catch (err) {
     clearInterval(ticker);
     aiProgressBar.style.width = "0%";
     const friendly = {
       rate_limited: "Too many requests in a short time -- wait a few minutes and try again.",
       daily_cap: "Today's free AI generation budget is used up. Try again tomorrow, or use the manual Gemini workflow below.",
+      unauthorized: "The passphrase was rejected. Unlock the studio again.",
+      locked: "Unlock the studio with your passphrase first.",
       quota_exceeded: "Workers AI's free daily quota is exhausted. Use the manual Gemini workflow below instead.",
     }[err.code];
     setStatus(aiStatus, friendly || `Generation failed: ${err.message}`, "error");
+    if (err.code === "unauthorized") setStatus(unlockStatus, "Locked: the passphrase was rejected.", "error");
   } finally {
     aiProgressWrap.hidden = true;
-    aiExtendBtn.disabled = false;
+    updateAiControls();
     regenerateBtn.disabled = false;
   }
 }
